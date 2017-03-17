@@ -1,0 +1,32 @@
+#how to REGEX
+#1. sample command is "cat sample.txt"
+#2. sample.txt contains
+{
+  en0: asidhaiosdiaosjdoiasd
+      some line here
+      Link Quality = 35/70
+}
+#3. text to parse is 'Link Quality = [0-9]{1,2}\/[0-9]{1,2}'
+#   - read on regex if you didn't get it
+#4. matchObj is in byte(string)
+
+import re #regex lib
+import subprocess
+
+cmd = subprocess.check_output(["cat", "sample.txt"])
+matchObj = re.search(b'Link Quality = ([0-9]{1,2})\/([0-9]{1,2})', cmd)
+
+#use () inside the regex pattern to transfer them into matchObj components
+#matchObj will now contain [first number, second number]
+#to use it, matchObj.group(index)
+#for example, stdout outputs 35/70 link quality
+
+percentage = int(matchObj.group(1)) / int(matchObj.group(2))
+#<byte> matchObj.group(1) = b'35' <- cannot be used in operations
+#<int> int(matchObj.group(1)) = 35
+
+print(percentage) #this outputs a float
+
+#do whatever you want using this regex template if you have to parse something that is in stdout, in my case:
+
+return percentage
