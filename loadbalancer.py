@@ -22,6 +22,7 @@ def getResponse(url,choice):
 			deviceInformation(jData)
 		elif(choice=="findSwitchLinks"):
 			findSwitchLinks(jData,switch[h2])
+			#print "switch:", switch[h2]
 		elif(choice=="linkTX"):		
 			linkTX(jData,portKey)
 
@@ -51,10 +52,12 @@ def deviceInformation(data):
 						portNumber = j[key]
 						#print '"portNumber:"',portNumber	
 						switchShort = switchDPID.split(":")[7]
-						hostPorts[ip+ "::" + switchShort] = str(portNumber)
+						hostPorts[ip +"::" + switchShort] = str(portNumber)
+						#combination ng host and switch and kung anong port ng switch siya nakaconnect
 						#print '"hostports:"',hostPorts[ip+ "::" + switchShort]
 
 # Finding Switch Links Of Common Switch Of H3, H4
+#show the links connected to switch[h2] or the second host that user entered
 
 def findSwitchLinks(data,s):
 	global switchLinks
@@ -62,6 +65,8 @@ def findSwitchLinks(data,s):
 	global G
 
 	links=[]
+	#print "links:", links
+	#sprint "s:", s
 	for i in data:
 		#print data
 		src = i['src-switch'].encode('ascii','ignore')
@@ -88,45 +93,63 @@ def findSwitchLinks(data,s):
 
 		if (src==s):
 			links.append(dst)
-		elif (dst==s):
+		elif (dst==s):	
 			links.append(src)
 		else:
 			continue
 
 	switchID = s.split(":")[7]
 	switchLinks[switchID]=links
+	#switchlinks is basically kung anong switch nakaconnect kay switchid
+	#print "links:", links
+	#print "linkports:", linkPorts
+	#port kung saan nakaconnect yung mga links
 	#print '"switchLinks[switchID]:"',switchLinks[switchID]
 
 # Finds The Path To A Switch
+# Find the paths or nodes from src to dst storing it in a dictionary named path
+#so yung laman ng path ngayon ay path[pathKey]= nodeList or combination ng pathkey at yung mga nodes or switches na dadaanan niyan
 
 def findSwitchRoute():
 	pathKey = ""
 	nodeList = []
 	src = int(switch[h2].split(":",7)[7],16)
 	dst = int(switch[h1].split(":",7)[7],16)
-	#print src
-	#print dst
+	#print "pathkey:", pathKey
+	#print "nodelist:", nodeList
 	for currentPath in nx.all_simple_paths(G, source=src, target=dst, cutoff=None):
 		for node in currentPath:
-
+			#currentPath is the available paths form src to dst while node is the nodes conatained in the current path
+			#print "currentpath:", currentPath
+			#print "node:", node
+			#print "pathkey:", pathKey
+			#tinatanngal niya yung laman ng tmp for every cycle ng loop
 			tmp = ""
 			if node < 17:
+				#para lang malagyan ng 0x yung single digit number of nodes. 
+				#if more than 17 na ata di na kelangan lagyan ng 0 before since two digits na
 				pathKey = pathKey + "0" + str(hex(node)).split("x",1)[1] + "::"
 				tmp = "00:00:00:00:00:00:00:0" + str(hex(node)).split("x",1)[1]
 			else:
 				pathKey = pathKey + str(hex(node)).split("x",1)[1] + "::"
 				tmp = "00:00:00:00:00:00:00:" + str(hex(node)).split("x",1)[1]
 			nodeList.append(tmp)
+			#nodelist or the switches na madadaanan 
+			#print "tmp:", tmp
+			#print "nodelist:", nodeList
 
 		pathKey=pathKey.strip("::")
-		
+		#removes the last two colons at the end of the pathkey
+		#print "pathkey:", pathKey
 		#portkey = pathKey
 		#print '\nportkey:', portKey
+		#print "nodelist:", nodeList
 
 		path[pathKey] = nodeList
 		pathKey = ""
 		nodeList = []
-
+		#laman ng path is combination of pathkey and nodes or switches
+		#that it will pass through. then reset nodelist and pathkey to zero
 	#print path
 
 # Computes Link TX
@@ -136,6 +159,7 @@ def linkTX(data,key):
 	port = linkPorts[key]
 	#print '\ndport for TX:',port
 	port = port.split("::")[1]
+	#dst port lang kinukuha nito
 	#print '\ndport for TX:',port
 	for i in data:
 		#print '\ndata for linkTX:',data
@@ -144,45 +168,65 @@ def linkTX(data,key):
 
 
 # Method To Compute Link Cost
-
+#computes link cost
 def getLinkCost():
 	global portKey
 	global cost
-
+	#print "linkports:", linkPorts
 	for key in path:
 		start = switch[h2]
 		src = switch[h2]
 		srcShortID = src.split(":")[7]
 		route = path[key][0].split(":")[7]
+		#print "path:", path
+		#print "h2:", h2
+		#print "src:", src
+		#print "pathkey[0]",path[key][0] 
+		#print "route:", route
 		#print 'mid:', mid
 		#route = routesrc + "::"
+
 		for link in path[key]:
+			#print "src:", src
 			temp = link.split(":")[7]
 			#print 'srcShortID:', srcShortID
 			#print 'temp:', temp
 			
 			if srcShortID==temp:
 				continue
+				#if same yung src at yung unang node sa link skip lang since nakalagay 
+				#na siya sa variable na route sa taas
 			else:
 				route = route + "::" + temp
+				#route niya per pair of switch na dinadaanan
+				
 				#print 'route:', route
 
 				portKey = srcShortID + "::" + temp
 				#print 'portkey:', srcShortID + "::" + temp
 				commonport = linkPorts[portKey]
+				#linkports are the combination of switches and the src and dst ports
 				#print 'commonport:', linkPorts[portKey]
 				tempport = commonport.split("::")[1]
+				#tempport ay yung destination port lang
 				#print 'tempport:', commonport.split("::")[1]
 				stats = "http://localhost:8080/wm/statistics/bandwidth/" + temp + "/" + tempport + "/json"
 				#print 'stats:',stats
+				#laman nung stats ay yung speed nung link from switch to dst port 
+				#in other words minemeasure niya yung bits per second ng isang link
 				getResponse(stats,"linkTX")
 				srcShortID = temp
+				#replace value of srcshortid with temp to move on to the next node
 				src = link
-				
+				#print 'srcShortID:', srcShortID
+				#print "src:", src
 
 		#portKey = start.split(":")[7] + "::" + mid + "::" + switch[h1].split(":")[7]
 		#print '\nportkeywithmid:', path[0]
 		finalLinkTX[route] = cost
+		#final link TX cost ng specific route
+		#print "route:", route
+		#print "finallinktx:", finalLinkTX
 		cost = 0
 		portKey = ""
 
@@ -208,8 +252,10 @@ def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 	}
 
 	jsonData = json.dumps(flow)
+	#print "jsonData:", jsonData
 
 	cmd = "curl -X POST -d \'" + jsonData + "\' " + staticFlowURL
+	#print "cmd:", cmd
 
 	systemCommand(cmd)
 
@@ -250,6 +296,7 @@ def addFlow():
 	staticFlowURL = "http://127.0.0.1:8080/wm/staticflowpusher/json"
 
 	shortestPath = min(finalLinkTX, key=finalLinkTX.get)
+	#print "key:", finalLinkTX.get
 
 		 	
 	print "\n\nRoutes: ", finalLinkTX
@@ -257,18 +304,28 @@ def addFlow():
 
 
 	currentNode = shortestPath.split("::",2)[0]
+	#print "currentnode:", currentNode
 	nextNode = shortestPath.split("::")[1]
+	#print "nextnode:", nextNode
 
 	# Port Computation
 
 	port = linkPorts[currentNode+"::"+nextNode]
 	outPort = port.split("::")[0]
 	inPort = hostPorts[h2+"::"+switch[h2].split(":")[7]]
+	#inport ay yung port kung san nakaattach yung host sa switch
+	#print "hostports:", hostPorts
+	#print "port:", port
+	#print "outport:", outPort
+	#print "inport:", inPort
+	#print "path:", path
 
 	flowRule(currentNode,flowCount,inPort,outPort,staticFlowURL)
 
 	flowCount = flowCount + 2
-
+	#flowCount +2 since may dalawang flow na nagawa sa flowRule
+	#r = requests.get[staticFlowURL]
+	#print "jsonr:", json.loads[r.content]
 
 	bestPath = path[shortestPath]
 	previousNode = currentNode
