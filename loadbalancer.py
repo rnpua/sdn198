@@ -170,7 +170,7 @@ def linkTX(data,key):
 def getLinkCost():
 	global portKey
 	global cost
-	print "linkports:", linkPorts
+	#print "linkports:", linkPorts
 	for key in path:
 		start = switch[h2]
 		src = switch[h2]
@@ -229,6 +229,7 @@ def getLinkCost():
 	print "finallinktx:", finalLinkTX
 
 #Method for getting hop_count
+#not applicable if entered hosts lie on the same switch
 def get_hopcount():
 	#route = []
 	global cost
@@ -238,6 +239,7 @@ def get_hopcount():
 	swtch = ""
 	swtchtmp = ""
 	route = ""
+	metric = ""
 	src = switch[h2]
 	dst = switch[h1]
 
@@ -257,21 +259,68 @@ def get_hopcount():
 		src = i['src_dpid'].encode('ascii','ignore')
 		route = i['src_dpid'].split(":")[7]
 		cost = (int)(i['hop_count'])
+		prevswtch = src
 		#print cost
-	for j in i['path']:
-		#switch = j
-		swtch = j['dpid']
-		if swtch == prevswtch:
-			continue
-		elif swtch == src:
-			continue
-		else:
-			swtchtmp = swtch.split(":")[7]
-			route = route + "::" + swtchtmp
-			prevswtch = swtch
-	#print route
-	finalLinkTX[route] = cost
-		
+		for j in i['path']:
+			#switch = j
+			swtch = j['dpid']
+			if swtch == prevswtch:
+				continue
+			elif swtch == src:
+				continue
+			else:
+				swtchtmp = swtch.split(":")[7]
+				route = route + "::" + swtchtmp
+				prevswtch = swtch
+		#print route
+		finalLinkTX[route] = cost
+
+#for calculating route using latency. not applicable if 
+#entered hosts lie on the same switch
+def get_latency():
+	#route = []
+	global cost
+	cost = 0
+	#finalLinkTX = {}
+	prevswitch = ""
+	swtch = ""
+	swtchtmp = ""
+	route = ""
+	metric = ""
+	src = switch[h2]
+	dst = switch[h1]
+
+	metric = "http://localhost:8080/wm/routing/paths/slow/" + src + "/" + dst + "/10/json"
+	data = requests.get(metric)
+	jdata = json.loads(data.content)
+	
+	#dst = jdata ['src_dpid']
+	srcShortID = src.split(":")[7]
+	content = data.content
+
+	#print data.content
+	#print jdata[0]
+	#print content
+	#print jdata
+	for i in jdata['results']:
+		src = i['src_dpid'].encode('ascii','ignore')
+		route = i['src_dpid'].split(":")[7]
+		cost = (int)(i['latency'])
+		prevswtch = src
+		#print cost
+		for j in i['path']:
+			#switch = j
+			swtch = j['dpid']
+			if swtch == prevswtch:
+				continue
+			elif swtch == src:
+				continue
+			else:
+				swtchtmp = swtch.split(":")[7]
+				route = route + "::" + swtchtmp
+				prevswtch = swtch
+		#print route
+		finalLinkTX[route] = cost		
 	
 
 def systemCommand(cmd):
@@ -337,6 +386,8 @@ def addFlow():
 	flowCount = 1
 	staticFlowURL = "http://127.0.0.1:8080/wm/staticflowpusher/json"
 
+	#print "key:", finalLinkTX
+	print "switch:", switch
 	shortestPath = min(finalLinkTX, key=finalLinkTX.get)
 	#print "key:", finalLinkTX.get
 
@@ -396,7 +447,8 @@ def loadbalance():
 
 	findSwitchRoute()
 	#getLinkCost()
-	get_hopcount()
+	#get_hopcount()
+	get_latency()
 	addFlow()
 
 # Main
