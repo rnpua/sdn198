@@ -20,40 +20,44 @@ def get_hopcount():
 	switch = ""
 	switchtmp = ""
 	route = ""
-	src = "00:00:00:00:00:00:00:03"
-	dst = "00:00:00:00:00:00:00:01"
+	#src = "00:00:00:00:00:00:00:02"
+	#dst = "00:00:00:00:00:00:00:01"
+	src = ""
+	dst= ""
 
-	metric = "http://localhost:8080/wm/routing/paths/slow/00:00:00:00:00:00:00:03/00:00:00:00:00:00:00:01/10/json"
+	metric = "http://localhost:8080/wm/routing/paths/slow/00:00:00:00:00:00:00:02/00:00:00:00:00:00:00:01/10/json"
 	data = requests.get(metric)
 	jdata = json.loads(data.content)
 	
 	#dst = jdata ['src_dpid']
-	srcShortID = src.split(":")[7]
+	#srcShortID = src.split(":")[7]
 	content = data.content
 
 	#print data.content
-	#print jdata[0]
-	#print content
-	#print jdata
+	#print jdata['results'][0]
+	#print type(content)
+	#print type(jdata)
 	for i in jdata['results']:
 		src = i['src_dpid'].encode('ascii','ignore')
 		route = i['src_dpid'].split(":")[7]
 		cost = (int)(i['hop_count'])
 		#print cost
-	for j in i['path']:
+		#print i
+		for j in i['path']:
 		#switch = j
-		switch = j['dpid']
-		if switch == prevswitch:
-			continue
-		elif switch == src:
-			continue
-		else:
-			switchtmp = switch.split(":")[7]
-			route = route + "::" + switchtmp
-			prevswitch = switch
+			switch = j['dpid']
+			if switch == prevswitch:
+				continue
+			elif switch == src:
+				continue
+			else:
+				switchtmp = switch.split(":")[7]
+				route = route + "::" + switchtmp
+				prevswitch = switch
 #	print route
-	finalLinkTX[route] = cost
+		finalLinkTX[route] = cost
 		
 	
 get_hopcount()
-print finalLinkTX
+shortestPath = min(finalLinkTX, key=finalLinkTX.get)
+print shortestPath
