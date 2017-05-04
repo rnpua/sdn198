@@ -105,6 +105,7 @@ def findSwitchRoute():
 	switch[dst_ip] = dst_ip_switch
 	src = int(switch[dst_ip].split(":",7)[7],16)
 	dst = int(switch[src_ip].split(":",7)[7],16)
+	#print "src_ip:", src_ip
 
 	for currentPath in nx.all_simple_paths(G, source=src, target=dst, cutoff=None):
 		for node in currentPath:
@@ -221,6 +222,7 @@ def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 	cmd = "curl -X POST -d \'" + jsonData + "\' " + staticFlowURL
 
 	systemCommand(cmd)
+
 def addFlow():
 
 	global count
@@ -252,16 +254,19 @@ def addFlow():
 
 	port = linkPorts[currentNode+"::"+nextNode]
 	outPort = port.split("::")[0]
-	inPort = hostPorts[src_ip+"::"+switch[src_ip].split(":")[7]]
+	inPort = hostPorts[dst_ip+"::"+switch[dst_ip].split(":")[7]]
 
 
 	bestPath = path[shortestPath]
 	flowRule(currentNode,flowCount,inPort,outPort,staticFlowURL)
 	flowCount = flowCount + 2
-	
+	#print "bestpath:", bestPath
+	#print "current node:", currentNode
 	previousNode = currentNode
 
 	for currentNode in range(0,len(bestPath)):
+		#print "current node:", currentNode
+		#print "current node:", bestPath[currentNode]
 		if previousNode == bestPath[currentNode].split(":")[7]:
 			continue
 		else:
@@ -277,10 +282,12 @@ def addFlow():
 			elif(bestPath[currentNode]==bestPath[-1]):
 				outPort = str(hostPorts[src_ip+"::"+switch[src_ip].split(":")[7]])
 			
+			#print "besthpath[-1]", bestPath[-1]
 			flowRule(bestPath[currentNode].split(":")[7],flowCount,str(inPort),str(outPort),staticFlowURL)
 			flowCount = flowCount + 2
 			previousNode = bestPath[currentNode].split(":")[7]
-
+	#finalLinkTX.clear()
+	#print "finalLinkTX after clear:", finalLinkTX
 			
 def loadbalance():
 
@@ -293,8 +300,12 @@ def loadbalance():
 
 	print "\n\nBefore Loadbalancing Routes: ", finalLinkTX
 	addFlow()
-	finalLinkTX.clear()
-	
+	#print "finalLinkTX before clear:", finalLinkTX
+	#finalLinkTX.clear()
+	#print "finalLinkTX after clear:", finalLinkTX
+	#print "path:", path
+	#path.clear()
+
 while True:
 
 	# Stores Info About H3 And H4's Switch
@@ -328,9 +339,10 @@ while True:
 	G = nx.Graph()
 
 	try:
-		deviceInfo = "http://localhost:8080/wm/device/"
-		getResponse(deviceInfo,"deviceInfo")
-		
+		#deviceInfo = "http://localhost:8080/wm/device/"
+		#getResponse(deviceInfo,"deviceInfo")
+		#enableStats = "http://localhost:8080/wm/statistics/config/enable/json"
+		#requests.put(enableStats)
 		i = 1
 		while (i < 3):
 			if i == 1:
@@ -339,8 +351,13 @@ while True:
 			elif i == 2:
 				src_ip="10.0.0.2"
 				src_ip_switch = "00:00:00:00:00:00:00:03"
+			deviceInfo = "http://localhost:8080/wm/device/"
+			getResponse(deviceInfo,"deviceInfo")
 			loadbalance()
-			#finalLinkTX.clear()
+			#path = {}
+			#print "finalLinkTX after clear:", finalLinkTX
+			finalLinkTX.clear()
+			path.clear()
 			time.sleep(5)
 			i = i+1
 
