@@ -172,6 +172,51 @@ def getLinkCost():
 		cost = 0
 		portKey = ""
 
+def get_hopcount():
+	#route = []
+	global cost
+	cost = 0
+	#finalLinkTX = {}
+	prevswitch = ""
+	swtch = ""
+	swtchtmp = ""
+	route = ""
+	metric = ""
+	src = switch[dst_ip]
+	dst = switch[src_ip]
+
+	metric = "http://localhost:8080/wm/routing/paths/slow/" + src + "/" + dst + "/10/json"
+	data = requests.get(metric)
+	jdata = json.loads(data.content)
+	
+	#dst = jdata ['src_dpid']
+	srcShortID = src.split(":")[7]
+	content = data.content
+
+	#print data.content
+	#print jdata[0]
+	#print content
+	#print jdata
+	for i in jdata['results']:
+		src = i['src_dpid'].encode('ascii','ignore')
+		route = i['src_dpid'].split(":")[7]
+		cost = (int)(i['hop_count'])
+		prevswtch = src
+		#print cost
+		for j in i['path']:
+			#switch = j
+			swtch = j['dpid']
+			if swtch == prevswtch:
+				continue
+			elif swtch == src:
+				continue
+			else:
+				swtchtmp = swtch.split(":")[7]
+				route = route + "::" + swtchtmp
+				prevswtch = swtch
+		#print route
+		finalLinkTX[route] = cost
+
 def systemCommand(cmd):
 	terminalProcess = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
 	terminalOutput, stderr = terminalProcess.communicate()
@@ -242,7 +287,11 @@ def addFlow():
 	#staticFlowURL = "http://localhost:8080/wm/staticflowpusher/json"
 	staticFlowURL = "http://localhost:8080/wm/staticentrypusher/json"
 
-	shortestPath = min(finalLinkTX, key=finalLinkTX.get)
+	if src_ip == "10.0.0.1":
+		shortestPath = max(finalLinkTX, key=finalLinkTX.get)		
+					
+	elif src_ip == "10.0.0.2":
+		shortestPath = min(finalLinkTX, key=finalLinkTX.get)
 
 		 	
 	print "\n\nRoutes: ", finalLinkTX
@@ -297,7 +346,8 @@ def loadbalance():
 
 	findSwitchRoute()
 	getLinkCost()
-
+	#get_hopcount()
+	
 	print "\n\nBefore Loadbalancing Routes: ", finalLinkTX
 	addFlow()
 	#print "finalLinkTX before clear:", finalLinkTX
@@ -348,9 +398,11 @@ while True:
 			if i == 1:
 				src_ip="10.0.0.1"
 				src_ip_switch = "00:00:00:00:00:00:00:01"
+				src_name = "1"
 			elif i == 2:
 				src_ip="10.0.0.2"
 				src_ip_switch = "00:00:00:00:00:00:00:03"
+				src_name = "2"
 			deviceInfo = "http://localhost:8080/wm/device/"
 			getResponse(deviceInfo,"deviceInfo")
 			loadbalance()
@@ -358,7 +410,7 @@ while True:
 			#print "finalLinkTX after clear:", finalLinkTX
 			finalLinkTX.clear()
 			path.clear()
-			time.sleep(5)
+			time.sleep(30)
 			i = i+1
 
 		#loadbalance()
