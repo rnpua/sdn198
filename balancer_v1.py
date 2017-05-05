@@ -10,26 +10,95 @@ from sys import exit
 #from subprocess import Popen, PIPE
 # Always enable statistics in controller
 
-src_ip="192.168.123.10"
-dst_ip="192.168.123.13"
+from websocket_server import WebsocketServer
+import threading
+import re
+import time
+import argparse
+import copy
 
-src_ip_switch = "00:00:00:00:00:00:00:01"
-dst_ip_switch = "00:00:00:00:00:00:00:03"
+#src_ip="192.168.123.10"
+#dst_ip="192.168.123.13"
+
+#src_ip_switch = "00:00:00:00:00:00:00:01"
+#dst_ip_switch = "00:00:00:00:00:00:00:03"
+
+#global variables
+deviceMAC = {}
+switch = {}
+hostPorts = {}
+path = {}
+switchLinks = {}
+linkPorts = {}
+finalLinkTX = {}
+portKey = ""
+cost = 0 
+gateway = {}
+
+
+parser = argparse.ArgumentParser()								#argument parser, takes in interface to listen
+parser.add_argument("-s", "--server", default='127.0.0.1', help="host address, default localhost")
+parser.add_argument("-p", "--port", default=9001, type=int, help="default 9001")
+args = parser.parse_args()
+
+#sample value
+#finalLinkTX = {'01::04': 3756, '01::03::02': 40256, '01::03': 3740256, '01::02::03': 7838120, '01::04::03': 3740256, '01::02::04::03': 7838120, '01::04::02::03': 7838120}
+finalLinkTX = {}
+#threshold value for metric chosen, currently TX(bytes/sec)
+THRESHOLD = 10000
+#list of GW nodes reaching threshold
+noGW = []
+
+# Called for every client connecting (after handshake)
+def new_client(client, server):
+	print("New client connected and was given id %d" % client['id'])
+	# server.send_message_to_all("Hey all, a new client has joined us")
+
+
+# Called for every client disconnecting
+def client_left(client, server):
+	print("Client(%d) disconnected" % client['id'])
+
+
+# Called when a client sends a message
+def message_received(client, server, message):
+	if len(message) > 200:
+		message = message[:200]+'..'
+	print("Client(%d) said: %s" % (client['id'], message))
+	matchObj = re.search('(.*):(\d+)',message)					# parses client message
+	# if int(matchObj.group(2)) > THRESHOLD:						# matchObj.group() contains {node, measurement}
+	# 	if matchObj.group(1) not in noGW:
+	# 		noGW.append(matchObj.group(1))
+	# else:
+	# 	if matchObj.group(1) in GW:
+	# 		noGW.remove(matchObj.group(1))
+
+	if matchObj.group(2) >= THRESHOLD:
+		noGW[matchObj.group(1)] = matchObj.group(2)
+	else:
+		if matchObj.group(1) in noGW:
+			del noGW[matchObj.group(1)]
+
+#no use
+def removeGW(links, nodes):
+	for item in list(links.key()):
+		for node in nodes:
+			if item.endswith(node):
+				del links[item]
+				break
 
 def getResponse(url,choice):
 
 	response = requests.get(url)
-	
 
 	if(response.ok):
 		jData = json.loads(response.content)
-		
-		
+
 		if(choice=="deviceInfo"):
 			deviceInformation(jData)
 		elif(choice=="findSwitchLinks"):
 			findSwitchLinks(jData,switch[dst_ip])
-		elif(choice=="linkTX"):		
+		elif(choice=="linkTX"):
 			linkTX(jData,portKey)
 
 	else:
@@ -41,7 +110,7 @@ def deviceInformation(data):
 	global deviceMAC
 	global hostPorts
 	switchDPID = ""
-	for i in data['devices']:	
+	for i in data['devices']:
 		if(i['ipv4']):
 			ip = i['ipv4'][0].encode('ascii','ignore')
 			mac = i['mac'][0].encode('ascii','ignore')
@@ -49,16 +118,16 @@ def deviceInformation(data):
 			for j in i['attachmentPoint']:
 				for key in j:
 					temp = key.encode('ascii','ignore')
-					
+
 					if(temp=="switch"):
 						switchDPID = j[key].encode('ascii','ignore')
 						switch[ip] = switchDPID
-						
+
 					elif(temp=="port"):
 						portNumber = j[key]
 						switchShort = switchDPID.split(":")[7]
 						hostPorts[ip+ "::" + switchShort] = str(portNumber)
-						
+
 def findSwitchLinks(data,s):
 	global switchLinks
 	global linkPorts
@@ -74,7 +143,7 @@ def findSwitchLinks(data,s):
 
 		srcTemp = src.split(":")[7]
 		dstTemp = dst.split(":")[7]
-			
+
 		G.add_edge(int(srcTemp,16), int(dstTemp,16))
 
 		tempSrcToDst = srcTemp + "::" + dstTemp
@@ -95,41 +164,34 @@ def findSwitchLinks(data,s):
 
 	switchID = s.split(":")[7]
 	switchLinks[switchID]=links
-	
+
 
 def findSwitchRoute():
 	pathKey = ""
 	nodeList = []
-	i = 1
-	while i < 3:
-		if i == 1:
-			src_ip="192.168.123.10"
-		elif i == 2:
-			src_ip="192.168.123.20"
-		switch[src_ip] = src_ip_switch
-		switch[dst_ip] = dst_ip_switch
-		src = int(switch[src_ip].split(":",7)[7],16)
-		dst = int(switch[dst_ip].split(":",7)[7],16)
+	switch[src_ip] = src_ip_switch
+	switch[dst_ip] = dst_ip_switch
+	src = int(switch[src_ip].split(":",7)[7],16)
+	dst = int(switch[dst_ip].split(":",7)[7],16)
 
-		for currentPath in nx.all_simple_paths(G, source=src, target=dst, cutoff=None):
-			for node in currentPath:
+	for currentPath in nx.all_simple_paths(G, source=src, target=dst, cutoff=None):
+		for node in currentPath:
 
-				tmp = ""
-				if node < 17:
-					pathKey = pathKey + "0" + str(hex(node)).split("x",1)[1] + "::"
-					tmp = "00:00:00:00:00:00:00:0" + str(hex(node)).split("x",1)[1]
-				else:
-					pathKey = pathKey + str(hex(node)).split("x",1)[1] + "::"
-					tmp = "00:00:00:00:00:00:00:" + str(hex(node)).split("x",1)[1]
-				nodeList.append(tmp)
+			tmp = ""
+			if node < 17:
+				pathKey = pathKey + "0" + str(hex(node)).split("x",1)[1] + "::"
+				tmp = "00:00:00:00:00:00:00:0" + str(hex(node)).split("x",1)[1]
+			else:
+				pathKey = pathKey + str(hex(node)).split("x",1)[1] + "::"
+				tmp = "00:00:00:00:00:00:00:" + str(hex(node)).split("x",1)[1]
+			nodeList.append(tmp)
 
-			pathKey=pathKey.strip("::")
+		pathKey=pathKey.strip("::")
 
-			path[pathKey] = nodeList
+		path[pathKey] = nodeList
 
-			pathKey = ""
-			nodeList = []
-		i++
+		pathKey = ""
+		nodeList = []
 
 def linkTX(data,key):
 	global cost
@@ -143,6 +205,7 @@ def linkTX(data,key):
 def getLinkCost():
 	global portKey
 	global cost
+	global finalLinkTX
 
 	for key in path:
 		start = switch[src_ip]
@@ -152,12 +215,12 @@ def getLinkCost():
 
 		for link in path[key]:
 			temp = link.split(":")[7]
-			
+
 			if srcShortID==temp:
 				continue
 			else:
 				route = route + "::" + temp
-				
+
 
 				portKey = srcShortID + "::" + temp
 
@@ -170,8 +233,6 @@ def getLinkCost():
 				getResponse(stats,"linkTX")
 				srcShortID = temp
 				src = link
-				
-
 
 		finalLinkTX[route] = cost
 		cost = 0
@@ -194,24 +255,20 @@ def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 
 		nextNode = "00:00:00:00:00:"+bestPath[count+1].split(":")[7]
 
-
 		if (count==0): #First node
 			prevNode = deviceMAC[src_ip]
 			#print "first node"
-
 		else: # Subsequent nodes
 			prevNode = "00:00:00:00:00:"+bestPath[count-1].split(":")[7]
 			outPortTemp = "in_port"
 			inPortTemp = outPortTemp
-			#print "sub node"		
-			
+			#print "sub node"
 
 	elif (count+1==len(bestPath)):#last node:
 		prevNode = "00:00:00:00:00:"+bestPath[count-1].split(":")[7]
-		nextNode = deviceMAC[dst_ip]		
+		nextNode = deviceMAC[dst_ip]
 		#print "last node"
 
-	
 	flow = {
 		'switch':"00:00:00:00:00:00:00:" + currentNode,
 	    "name":"flow" + str(flowCount),
@@ -248,7 +305,7 @@ def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 	cmd = "curl -X POST -d \'" + jsonData + "\' " + staticFlowURL
 
 	systemCommand(cmd)
-	
+
 	count = count + 1
 
 def addFlow():
@@ -270,12 +327,14 @@ def addFlow():
 	#staticFlowURL = "http://localhost:8080/wm/staticflowpusher/json"
 	staticFlowURL = "http://localhost:8080/wm/staticentrypusher/json"
 
-	shortestPath = min(finalLinkTX, key=finalLinkTX.get)
+	# GW CODE HERE
+	dummy = removeGW(copy.deepcopy(finalLinkTX), noGW)
 
-		 	
+	shortestPath = min(dummy, key=dummy.get)
+	# shortestPath = min(finalLinkTX, key=finalLinkTX.get)
+
 	print "\n\nRoutes: ", finalLinkTX
 	print "\n\nShortest Path: ",shortestPath
-
 
 	currentNode = shortestPath.split("::",2)[0]
 	nextNode = shortestPath.split("::")[1]
@@ -284,11 +343,10 @@ def addFlow():
 	outPort = port.split("::")[0]
 	inPort = hostPorts[src_ip+"::"+switch[src_ip].split(":")[7]]
 
-
 	bestPath = path[shortestPath]
 	flowRule(currentNode,flowCount,inPort,outPort,staticFlowURL)
 	flowCount = flowCount + 2
-	
+
 	previousNode = currentNode
 
 	for currentNode in range(0,len(bestPath)):
@@ -306,65 +364,103 @@ def addFlow():
 				outPort = port.split("::")[0]
 			elif(bestPath[currentNode]==bestPath[-1]):
 				outPort = str(hostPorts[src_ip+"::"+switch[src_ip].split(":")[7]])
-			
+
 			flowRule(bestPath[currentNode].split(":")[7],flowCount,str(inPort),str(outPort),staticFlowURL)
 			flowCount = flowCount + 2
 			previousNode = bestPath[currentNode].split(":")[7]
 
-			
 def loadbalance():
 
 	linkURL = "http://localhost:8080/wm/topology/links/json"
 	getResponse(linkURL,"findSwitchLinks")
-	
 
 	findSwitchRoute()
 	getLinkCost()
 
 	print "\n\nBefore Loadbalancing Routes: ", finalLinkTX
 	addFlow()
-	
-while True:
 
-	# Stores Info About H3 And H4's Switch
-	switch = {}
+# USELESS INITIALIZATION, DEPRECATE/REPLACE WHEN POSSIBLE
+class myThread (threading.Thread):
+	def __init__(self, name, run_event):				#initializations
+		threading.Thread.__init__(self)
+		self.name = name
+		self.run_event = run_event
+	def run(self):
+		print ("Starting ", self.name)
+		myFunction(self, self.name, self.run_event)
+		print ("Exiting ", self.name)
 
-	# Mac of H3 And H4
-	deviceMAC = {}
+def myFunction(self, threadName, run_event):
+	while run_event.is_set():									# insert loadbalancing **inside** the while loop
+		#print finalLinkTX										# or your code is doomed to run forever
+		#time.sleep(2)
 
-	# Stores Host Switch Ports
-	hostPorts = {}
-	
-	# Stores Switch To Switch Path
-	path = {}
+		# Stores Info About H3 And H4's Switch
+		switch = {}
 
-	# Switch Links
+		# Mac of H3 And H4
+		#deviceMAC = {}
 
-	switchLinks = {}
+		# Stores Host Switch Ports
+		hostPorts = {}
 
-	# Stores Link Ports
-	linkPorts = {}
+		# Stores Switch To Switch Path
+		path = {}
 
-	# Stores Final Link Rates
-	finalLinkTX = {}
+		# Switch Links
 
-	# Store Port Key For Finding Link Rates
-	portKey = ""
+		switchLinks = {}
 
-	# Stores Link Cost
-	cost = 0
-	# Graph
-	G = nx.Graph()
+		# Stores Link Ports
+		linkPorts = {}
 
-	try:
-		deviceInfo = "http://localhost:8080/wm/device/"
-		getResponse(deviceInfo,"deviceInfo")
-		loadbalance()
+		# Stores Final Link Rates
+		#global finalLinkTX
+
+		# Store Port Key For Finding Link Rates
+		portKey = ""
+
+		# Stores Link Cost
+		cost = 0
+		# Graph
+		G = nx.Graph()
+		dst_ip = min(gateway, key=gateway.get)
+		dst_ip_switch = min(gateway)
+
+		i = 1
+		while (i < 3):
+			if i == 1:
+				src_ip="10.0.0.1"
+				src_ip_switch = "00:00:00:00:00:00:00:01"
+				src_name = "1"
+			elif i == 2:
+				src_ip="10.0.0.2"
+				src_ip_switch = "00:00:00:00:00:00:00:03"
+				src_name = "2"
+			deviceInfo = "http://localhost:8080/wm/device/"
+			getResponse(deviceInfo,"deviceInfo")
+			loadbalance()
+			#path = {}
+			#print "finalLinkTX after clear:", finalLinkTX
+			finalLinkTX.clear()
+			path.clear()
+			time.sleep(30)
+			i = i+1
 
 
-		time.sleep(60)
-	except KeyboardInterrupt:
-		break
-		exit()
-
-#http://www.thebeijinger.com/blog/2017/04/10/mandarin-mondays-first-100-characters-every-beginner-needs-memorize
+run_event = threading.Event()									# stop condition
+run_event.set()
+t1 = myThread("Balance", run_event)
+t1.start()
+try:
+	server = WebsocketServer(args.port, args.server)
+	server.set_fn_new_client(new_client)
+	server.set_fn_client_left(client_left)
+	server.set_fn_message_received(message_received)
+	server.run_forever()
+except KeyboardInterrupt:
+	print "closing"
+	run_event.clear()
+	t1.join()
+	print "closed"
