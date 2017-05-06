@@ -226,18 +226,18 @@ def systemCommand(cmd):
 def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 	flow = {
 		'switch':"00:00:00:00:00:00:00:" + currentNode,
-	    "name":"flow" + str(flowCount),
-	    "cookie":"0",
-	    "priority":"32768",
-	    "in_port":inPort,
+	   	"name":"flow" + str(flowCount),
+	   	"cookie":"0",
+	   	"priority":"32768",
+	    	"in_port":inPort,
 		"eth_type": "0x0800",
 		"ipv4_src": dst_ip,
 		"ipv4_dst": src_ip,
 		"eth_src": deviceMAC[dst_ip],
 		"eth_dst": deviceMAC[src_ip],
-	    "active":"true",
-	    "actions":"output=" + outPort
-	}
+	    	"active":"true",
+	    	"actions":"output=" + outPort
+		}
 
 	jsonData = json.dumps(flow)
 
@@ -249,18 +249,18 @@ def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 
 	flow = {
 		'switch':"00:00:00:00:00:00:00:" + currentNode,
-	    "name":"flow" + str(flowCount),
-	    "cookie":"0",
-	    "priority":"32768",
-	    "in_port":outPort,
+	    	"name":"flow" + str(flowCount),
+	    	"cookie":"0",
+	    	"priority":"32768",
+	    	"in_port":outPort,
 		"eth_type": "0x0800",
 		"ipv4_src": src_ip,
 		"ipv4_dst": dst_ip,
 		"eth_src": deviceMAC[src_ip],
 		"eth_dst": deviceMAC[dst_ip],
-	    "active":"true",
-	    "actions":"output=" + inPort
-	}
+	    	"active":"true",
+	    	"actions":"output=" + inPort
+		}
 
 	jsonData = json.dumps(flow)
 
